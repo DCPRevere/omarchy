@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# omarchy:summary=Remove the OpenClaw agent platform along with its gateway service and web app.
+# omarchy:requires-sudo=true
+
+# -u so an unset HOME is an error rather than a set of rm -rf paths rooted at /.
+set -euo pipefail
+
+# The gateway user service OpenClaw installs for itself through onboarding.
+# OpenClaw writes the unit to $HOME/.config regardless of XDG_CONFIG_HOME, so
+# look exactly there; when the file is absent, onboarding never got that far
+# and there is nothing of ours registered. Upstream's own teardown knows every
+# piece its install wrote (unit file, the default.target.wants enablement
+# symlink, the reload), so prefer it while the binary is still installed and
+# fall back to doing the same by hand. A gateway that will not stop aborts the
+# removal: dropping the package would strand the live process on deleted code
+# with no way to restart it cleanly.
+unit_file="$HOME/.config/systemd/user/openclaw-gateway.service"
+if [[ -f $unit_file ]]; then
+  if openclaw gateway uninstall >/dev/null 2>&1 ||
+    systemctl --user disable --now openclaw-gateway.service 2>/dev/null ||
+    ! systemctl --user is-active --quiet openclaw-gateway.service 2>/dev/null; then
+    rm -f "$unit_file" "${unit_file%/*}/default.target.wants/openclaw-gateway.service"
+    systemctl --user daemon-reload 2>/dev/null || true
+  else
+    echo "Could not stop openclaw-gateway.service; OpenClaw was not removed." >&2
+    exit 1
+  fi
+fi
+
+omarchy-pkg-drop openclaw
+
+# The web app launcher and icon omarchy-install-ai-openclaw created. Not
+# ~/.openclaw: the chats, memories, credentials, and skills in there are the
+# user's agent, they are small, and finding them intact after a reinstall is
+# the better surprise.
+rm -f "$HOME/.local/share/applications/OpenClaw.desktop"
+rm -f "$HOME/.local/share/icons/hicolor/256x256/apps/openclaw.png"
+gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" &>/dev/null || true
+
+echo ""
+echo "OpenClaw has been removed."
+echo "Your agent's chats, memories, and settings are still in ~/.openclaw."
