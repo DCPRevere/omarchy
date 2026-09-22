@@ -16,7 +16,7 @@ const ctx = {NotificationLogic:logic, NotificationUrgency:{Normal:1}, popupModel
  Date, console}
 ctx.service=ctx
 vm.createContext(ctx)
-for (const name of ['groupIndex','popupRef','updateGroup','detachMember','insertGrouped','refreshPopup','isRestoredRow','removePopup']) {
+for (const name of ['groupIndex','popupRef','updateGroup','detachMember','insertGrouped','insertSingleton','refreshPopup','isRestoredRow','removePopup']) {
  const start=qml.indexOf('  function '+name+'('), end=qml.indexOf('\n  }',start)+4
  vm.runInContext(qml.slice(start,end),ctx)
 }
@@ -66,6 +66,25 @@ model.insert(0,restored)
 assertEqual(ctx.popupRef(restored),null,'restored ID collision cannot invoke a fresh object')
 ctx.insertGrouped(member(14,'History'))
 assertEqual(model.rows.filter(r=>r.body==='History').length,2,'restored popups never absorb new arrivals')
+// A changed member must not inherit an older matching popup's countdown.
+const oldTime=Date.now()-8000
+ctx.insertGrouped(member(20,'Older match',oldTime))
+ctx.insertGrouped(member(21,'New group',oldTime+7000))
+ctx.insertGrouped(member(22,'New group',oldTime+7001))
+const updateTime=Date.now()
+ctx.liveRefs[22].body='Older match'
+ctx.refreshPopup(ctx.liveRefs[22],22,oldTime+7001)
+assert(ctx.groupIndex(20)!==ctx.groupIndex(22),'changed member remains separate from older matching popup')
+const split=model.get(ctx.groupIndex(22))
+assert(split.timestamp>=updateTime,'split receives a fresh lifetime timestamp')
+assertEqual(split.duplicateCount,1,'split starts as a singleton')
+assertEqual(model.get(ctx.groupIndex(20)).timestamp,oldTime,'older popup keeps its existing countdown')
+ctx.removePopup(ctx.groupIndex(20),'expire')
+assert(!ctx.liveRefs[20].tracked,'older matching popup expires')
+assert(ctx.liveRefs[22].tracked&&ctx.groupIndex(22)>=0,'split survives older matching popup expiry')
+assert(ctx.liveRefs[21].tracked&&ctx.groupIndex(21)>=0,'original group survives independently')
+ctx.removePopup(ctx.groupIndex(22),'expire')
+assert(!ctx.liveRefs[22].tracked,'split expires independently')
 const a=member(9),b=member(10)
 for (const changed of [{app:'Other'},{desktopEntry:'other'},{summary:'Different'},{body:'Different'},{urgency:2},{execArgv:'["other"]'},{originalId:9}])
  assert(!logic.duplicateMatches(a,{...b,...changed},-1),'different identity/content and replacement IDs do not group')

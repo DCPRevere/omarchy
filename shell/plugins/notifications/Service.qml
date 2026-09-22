@@ -117,6 +117,10 @@ Item {
       updateGroup(i, members.concat([snapshot]))
       return
     }
+    insertSingleton(snapshot)
+  }
+
+  function insertSingleton(snapshot) {
     popupGroups[NotificationLogic.popupFileName(snapshot)] = [snapshot]
     persistPopupFile(snapshot)
     popupModel.insert(0, snapshot)
@@ -347,7 +351,7 @@ Item {
       var nextTimestamp = Math.max(Date.now(), row.timestamp + 1)
       detachMember(originalId)
       updated.timestamp = nextTimestamp
-      insertGrouped(updated)
+      insertSingleton(updated)
     } else {
       members[memberIndex] = updated
       updateGroup(index, members)
